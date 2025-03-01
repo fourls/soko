@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/fourls/soko/internal/schedule"
+	"github.com/fourls/soko/internal/sokofile"
 	"github.com/gorilla/mux"
 )
 
@@ -52,24 +53,39 @@ func jobInfoToDto(id schedule.JobId, info *schedule.JobInfo) JobDto {
 	}
 }
 
+func sokofileToFlows(project *sokofile.Project) map[schedule.FlowId]schedule.Flow {
+	flows := make(map[schedule.FlowId]schedule.Flow, len(project.Flows))
+
+	i := 0
+	for key, value := range project.Flows {
+		steps := make([]schedule.Step, len(value.Steps))
+
+		for j, step := range value.Steps {
+			steps[j] = schedule.Step{
+				Args: step.Cmd,
+			}
+		}
+
+		id := schedule.FlowId(project.Name + "." + key)
+
+		flows[id] = schedule.Flow{
+			Id:    id,
+			Steps: steps,
+		}
+		i++
+	}
+
+	return flows
+}
+
 func main() {
 	scheduler := schedule.New()
-	scheduler.Flows = map[schedule.FlowId]schedule.Flow{
-		"foo": {
-			Id: "foo",
-			Steps: []schedule.Step{
-				{
-					Args: []string{"touch", "empty.txt"},
-				},
-				{
-					Args: []string{"bash", "-c", "echo 'Hello world!' > hello.txt"},
-				},
-				{
-					Args: []string{"echo", "'Hello! Testing the output'"},
-				},
-			},
-		},
+
+	project, err := sokofile.Parse("soko.yml")
+	if err != nil {
+		panic(err)
 	}
+	scheduler.Flows = sokofileToFlows(project)
 
 	scheduler.StartWorkers()
 	defer scheduler.StopWorkers()
@@ -102,7 +118,7 @@ func main() {
 		} else {
 			http.Error(w, "Flow not found", 404)
 		}
-	})
+	}).Methods("POST")
 
 	router.HandleFunc("/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -116,7 +132,7 @@ func main() {
 		}
 
 		json.NewEncoder(w).Encode(jobInfoToDto(id, info))
-	})
+	}).Methods("GET")
 
 	http.ListenAndServe(":8000", router)
 }

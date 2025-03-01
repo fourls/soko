@@ -1,0 +1,6 @@
+name: sokoception
+flows:
+  echo_test:
+    steps:
+      - cmd: ["bash", "-c", 'echo "Today is $(date)"']
+      - cmd: ["git", "ls-files", "--", "*.go"]
