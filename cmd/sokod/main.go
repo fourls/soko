@@ -9,13 +9,47 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type JobsGetResponse struct {
-	JobId string
-	State string
+type JobDto struct {
+	JobId  string          `json:"id"`
+	FlowId string          `json:"flow"`
+	State  string          `json:"state"`
+	Output []StepResultDto `json:"output"`
 }
 
-type FlowsRunResponse struct {
-	JobId string
+type StepResultDto struct {
+	Input  string `json:"input"`
+	Output string `json:"output"`
+}
+
+func jobInfoToDto(id schedule.JobId, info *schedule.JobInfo) JobDto {
+	state := "unknown"
+
+	switch info.State {
+	case schedule.JobPending:
+		state = "pending"
+	case schedule.JobRunning:
+		state = "running"
+	case schedule.JobSucceeded:
+		state = "succeeded"
+	case schedule.JobFailed:
+		state = "failed"
+	}
+
+	output := make([]StepResultDto, len(info.Steps))
+	for i, step := range info.Steps {
+		// todo sanitize
+		output[i] = StepResultDto{
+			Input:  step.Input,
+			Output: string(step.Output),
+		}
+	}
+
+	return JobDto{
+		JobId:  string(id),
+		FlowId: string(info.FlowId),
+		State:  state,
+		Output: output,
+	}
 }
 
 func main() {
@@ -30,13 +64,24 @@ func main() {
 				{
 					Args: []string{"bash", "-c", "echo 'Hello world!' > hello.txt"},
 				},
+				{
+					Args: []string{"echo", "'Hello! Testing the output'"},
+				},
 			},
 		},
 	}
 
-	go scheduler.ProcessJobsWorker()
+	scheduler.StartWorkers()
+	defer scheduler.StopWorkers()
 
 	router := mux.NewRouter()
+
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Add("Content-Type", "application/json")
+			next.ServeHTTP(w, r)
+		})
+	})
 
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "Hello world!")
@@ -48,7 +93,12 @@ func main() {
 		found, jobId := scheduler.StartJob(flowId)
 
 		if found {
-			json.NewEncoder(w).Encode(FlowsRunResponse{JobId: string(jobId)})
+			json.NewEncoder(w).Encode(JobDto{
+				JobId:  string(jobId),
+				FlowId: string(flowId),
+				State:  "pending",
+				Output: make([]StepResultDto, 0),
+			})
 		} else {
 			http.Error(w, "Flow not found", 404)
 		}
@@ -58,30 +108,14 @@ func main() {
 		vars := mux.Vars(r)
 		id := schedule.JobId(vars["id"])
 
-		scheduler.ProcessUpdates()
-		state, ok := scheduler.Jobs[id]
+		info := scheduler.GetJob(id)
 
-		if !ok {
+		if info == nil {
 			http.Error(w, "Job not found", 404)
 			return
 		}
 
-		resp := JobsGetResponse{JobId: string(id)}
-
-		switch state {
-		case schedule.JobPending:
-			resp.State = "pending"
-		case schedule.JobRunning:
-			resp.State = "running"
-		case schedule.JobSucceeded:
-			resp.State = "succeeded"
-		case schedule.JobFailed:
-			resp.State = "failed"
-		default:
-			resp.State = fmt.Sprintf("unknown (%d)", state)
-		}
-
-		json.NewEncoder(w).Encode(resp)
+		json.NewEncoder(w).Encode(jobInfoToDto(id, info))
 	})
 
 	http.ListenAndServe(":8000", router)
