@@ -2,6 +2,8 @@ package engine
 
 import (
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -17,7 +19,7 @@ type JobEngine struct {
 	jobQueue        chan *Job
 	jobUpdates      chan jobUpdate
 	jobInfoRequests chan jobInfoRequest
-	quit            chan int
+	quitChans       []chan bool
 }
 
 func New() JobEngine {
@@ -35,6 +37,8 @@ func (s *JobEngine) StartJob(flowId FlowId) (bool, JobId) {
 
 	job := new(Job)
 	job.Id = jobId
+
+	println("Starting job " + job.Id)
 
 	flow, ok := s.Flows[flowId]
 	if !ok {
@@ -57,17 +61,52 @@ func (s *JobEngine) GetJob(id JobId) *JobInfo {
 }
 
 func (s *JobEngine) StartWorkers() {
+	s.quitChans = []chan bool{make(chan bool), make(chan bool)}
+
 	go s.ProcessJobExecWorker()
-	go s.ProcessJobInfoWorker()
+	go s.ProcessJobInfoWorker(s.quitChans[0])
+	go s.ProcessScheduleWorker(s.quitChans[1])
 }
 
 func (s *JobEngine) StopWorkers() {
-	s.quit <- 0
-	s.quit <- 0
+	for _, ch := range s.quitChans {
+		ch <- true
+	}
+
 	close(s.jobQueue)
 }
 
-func (s *JobEngine) ProcessJobInfoWorker() {
+func (s *JobEngine) ProcessScheduleWorker(quit chan bool) {
+	lastMinute := time.Now().Minute() - 1
+
+	for {
+		select {
+		case <-quit:
+			return
+		default:
+			now := time.Now()
+
+			if now.Minute() != lastMinute {
+				lastMinute = now.Minute()
+				for id, flow := range s.Flows {
+					if flow.Schedule != nil && scheduleMatches(now, flow.Schedule) {
+						s.StartJob(id)
+					}
+				}
+			}
+
+			time.Sleep(20 * time.Second)
+		}
+	}
+}
+
+func scheduleMatches(time time.Time, schedule *FlowSchedule) bool {
+	return (schedule.Days == nil || slices.Contains(schedule.Days, time.Weekday())) &&
+		(schedule.Hours == nil || slices.Contains(schedule.Hours, time.Hour())) &&
+		(schedule.Minutes == nil || slices.Contains(schedule.Minutes, time.Minute()))
+}
+
+func (s *JobEngine) ProcessJobInfoWorker(quit chan bool) {
 	for {
 		select {
 		case request := <-s.jobInfoRequests:
@@ -110,7 +149,7 @@ func (s *JobEngine) ProcessJobInfoWorker() {
 			}
 
 			s.jobs[update.JobId()] = info
-		case <-s.quit:
+		case <-quit:
 			return
 		}
 	}

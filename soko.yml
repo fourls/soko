@@ -2,7 +2,6 @@ name: sokoception
 flows:
   echo_test:
     schedule:
-      minute: *
     steps:
       - cmd: ["bash", "-c", 'echo "Today is $(date)"']
       - cmd: ["git", "ls-files", "--", "*.go"]
