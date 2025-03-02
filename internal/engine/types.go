@@ -1,7 +1,5 @@
 package engine
 
-import "time"
-
 type FlowId string
 type JobId string
 
@@ -13,12 +11,6 @@ type Flow struct {
 
 type Step struct {
 	Args []string
-}
-
-type FlowSchedule struct {
-	Minutes []int
-	Hours   []int
-	Days    []time.Weekday
 }
 
 type JobState int

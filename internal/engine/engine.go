@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"log"
 	"slices"
 	"time"
 
@@ -38,7 +39,7 @@ func (s *JobEngine) StartJob(flowId FlowId) (bool, JobId) {
 	job := new(Job)
 	job.Id = jobId
 
-	println("Starting job " + job.Id)
+	log.Print("Starting job " + job.Id)
 
 	flow, ok := s.Flows[flowId]
 	if !ok {
@@ -89,7 +90,9 @@ func (s *JobEngine) ProcessScheduleWorker(quit chan bool) {
 			if now.Minute() != lastMinute {
 				lastMinute = now.Minute()
 				for id, flow := range s.Flows {
+					log.Printf("Checking scheduling eligibility for %s", id)
 					if flow.Schedule != nil && scheduleMatches(now, flow.Schedule) {
+						log.Printf("Matches!")
 						s.StartJob(id)
 					}
 				}

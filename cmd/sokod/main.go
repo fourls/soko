@@ -91,6 +91,7 @@ func sokofileToFlows(project *sokofile.Project) map[engine.FlowId]engine.Flow {
 func main() {
 	jobEngine := engine.New()
 
+	// todo support loading projects
 	project, err := sokofile.Parse("soko.yml")
 	if err != nil {
 		panic(err)
