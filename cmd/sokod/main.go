@@ -68,9 +68,19 @@ func sokofileToFlows(project *sokofile.Project) map[engine.FlowId]engine.Flow {
 
 		id := engine.FlowId(project.Name + "." + key)
 
+		var schedule *engine.FlowSchedule = nil
+		if value.Schedule != nil {
+			schedule = &engine.FlowSchedule{
+				Minutes: value.Schedule.Minutes(),
+				Hours:   value.Schedule.Hours(),
+				Days:    value.Schedule.Days(),
+			}
+		}
+
 		flows[id] = engine.Flow{
-			Id:    id,
-			Steps: steps,
+			Id:       id,
+			Steps:    steps,
+			Schedule: schedule,
 		}
 		i++
 	}
