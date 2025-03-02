@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/fourls/soko/internal/schedule"
+	"github.com/fourls/soko/internal/engine"
 	"github.com/fourls/soko/internal/sokofile"
 	"github.com/gorilla/mux"
 )
@@ -22,17 +22,17 @@ type StepResultDto struct {
 	Output string `json:"output"`
 }
 
-func jobInfoToDto(id schedule.JobId, info *schedule.JobInfo) JobDto {
+func jobInfoToDto(id engine.JobId, info *engine.JobInfo) JobDto {
 	state := "unknown"
 
 	switch info.State {
-	case schedule.JobPending:
+	case engine.JobPending:
 		state = "pending"
-	case schedule.JobRunning:
+	case engine.JobRunning:
 		state = "running"
-	case schedule.JobSucceeded:
+	case engine.JobSucceeded:
 		state = "succeeded"
-	case schedule.JobFailed:
+	case engine.JobFailed:
 		state = "failed"
 	}
 
@@ -53,22 +53,22 @@ func jobInfoToDto(id schedule.JobId, info *schedule.JobInfo) JobDto {
 	}
 }
 
-func sokofileToFlows(project *sokofile.Project) map[schedule.FlowId]schedule.Flow {
-	flows := make(map[schedule.FlowId]schedule.Flow, len(project.Flows))
+func sokofileToFlows(project *sokofile.Project) map[engine.FlowId]engine.Flow {
+	flows := make(map[engine.FlowId]engine.Flow, len(project.Flows))
 
 	i := 0
 	for key, value := range project.Flows {
-		steps := make([]schedule.Step, len(value.Steps))
+		steps := make([]engine.Step, len(value.Steps))
 
 		for j, step := range value.Steps {
-			steps[j] = schedule.Step{
+			steps[j] = engine.Step{
 				Args: step.Cmd,
 			}
 		}
 
-		id := schedule.FlowId(project.Name + "." + key)
+		id := engine.FlowId(project.Name + "." + key)
 
-		flows[id] = schedule.Flow{
+		flows[id] = engine.Flow{
 			Id:    id,
 			Steps: steps,
 		}
@@ -79,16 +79,16 @@ func sokofileToFlows(project *sokofile.Project) map[schedule.FlowId]schedule.Flo
 }
 
 func main() {
-	scheduler := schedule.New()
+	jobEngine := engine.New()
 
 	project, err := sokofile.Parse("soko.yml")
 	if err != nil {
 		panic(err)
 	}
-	scheduler.Flows = sokofileToFlows(project)
+	jobEngine.Flows = sokofileToFlows(project)
 
-	scheduler.StartWorkers()
-	defer scheduler.StopWorkers()
+	jobEngine.StartWorkers()
+	defer jobEngine.StopWorkers()
 
 	router := mux.NewRouter()
 
@@ -105,8 +105,8 @@ func main() {
 
 	router.HandleFunc("/flows/{id}/run", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		flowId := schedule.FlowId(vars["id"])
-		found, jobId := scheduler.StartJob(flowId)
+		flowId := engine.FlowId(vars["id"])
+		found, jobId := jobEngine.StartJob(flowId)
 
 		if found {
 			json.NewEncoder(w).Encode(JobDto{
@@ -122,9 +122,9 @@ func main() {
 
 	router.HandleFunc("/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		id := schedule.JobId(vars["id"])
+		id := engine.JobId(vars["id"])
 
-		info := scheduler.GetJob(id)
+		info := jobEngine.GetJob(id)
 
 		if info == nil {
 			http.Error(w, "Job not found", 404)

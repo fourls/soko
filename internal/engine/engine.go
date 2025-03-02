@@ -1,4 +1,4 @@
-package schedule
+package engine
 
 import (
 	"errors"
@@ -109,7 +109,7 @@ type jobInfoRequest struct {
 	receiver chan *JobInfo
 }
 
-type Scheduler struct {
+type JobEngine struct {
 	jobs            map[JobId]JobInfo
 	Flows           map[FlowId]Flow
 	jobQueue        chan *Job
@@ -118,8 +118,8 @@ type Scheduler struct {
 	quit            chan int
 }
 
-func New() Scheduler {
-	return Scheduler{
+func New() JobEngine {
+	return JobEngine{
 		jobs:            make(map[JobId]JobInfo),
 		Flows:           make(map[FlowId]Flow),
 		jobQueue:        make(chan *Job, 1024),
@@ -128,7 +128,7 @@ func New() Scheduler {
 	}
 }
 
-func (s *Scheduler) StartJob(flowId FlowId) (bool, JobId) {
+func (s *JobEngine) StartJob(flowId FlowId) (bool, JobId) {
 	jobId := JobId(fmt.Sprintf("%s:%s", flowId, uuid.New().String()))
 
 	job := new(Job)
@@ -145,7 +145,7 @@ func (s *Scheduler) StartJob(flowId FlowId) (bool, JobId) {
 	return true, jobId
 }
 
-func (s *Scheduler) GetJob(id JobId) *JobInfo {
+func (s *JobEngine) GetJob(id JobId) *JobInfo {
 	receiver := make(chan *JobInfo)
 	s.jobInfoRequests <- jobInfoRequest{
 		id:       id,
@@ -154,16 +154,16 @@ func (s *Scheduler) GetJob(id JobId) *JobInfo {
 	return <-receiver
 }
 
-func (s *Scheduler) StartWorkers() {
+func (s *JobEngine) StartWorkers() {
 	go s.ProcessJobExecWorker()
 	go s.ProcessJobInfoWorker()
 }
 
-func (s *Scheduler) StopWorkers() {
+func (s *JobEngine) StopWorkers() {
 	s.quit <- 0
 }
 
-func (s *Scheduler) ProcessJobInfoWorker() {
+func (s *JobEngine) ProcessJobInfoWorker() {
 	for {
 		select {
 		case request := <-s.jobInfoRequests:
@@ -212,7 +212,7 @@ func (s *Scheduler) ProcessJobInfoWorker() {
 	}
 }
 
-func (s *Scheduler) ProcessJobExecWorker() {
+func (s *JobEngine) ProcessJobExecWorker() {
 	for job := range s.jobQueue {
 		runJob(job, s.jobUpdates)
 	}
