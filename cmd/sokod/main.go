@@ -90,16 +90,17 @@ func sokofileToFlows(project *sokofile.Project) map[engine.FlowId]engine.Flow {
 
 func main() {
 	jobEngine := engine.New()
+	defer jobEngine.Close()
 
 	// todo support loading projects
 	project, err := sokofile.Parse("soko.yml")
 	if err != nil {
 		panic(err)
 	}
-	jobEngine.Flows = sokofileToFlows(project)
 
-	jobEngine.StartWorkers()
-	defer jobEngine.StopWorkers()
+	for id, flow := range sokofileToFlows(project) {
+		jobEngine.Flows.Create(id, &flow)
+	}
 
 	router := mux.NewRouter()
 

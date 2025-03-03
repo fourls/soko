@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/fourls/soko/internal/crud"
 	"github.com/google/uuid"
 )
 
@@ -15,22 +16,37 @@ type jobInfoRequest struct {
 }
 
 type JobEngine struct {
-	jobs            map[JobId]JobInfo
-	Flows           map[FlowId]Flow
-	jobQueue        chan *Job
-	jobUpdates      chan jobUpdate
-	jobInfoRequests chan jobInfoRequest
-	quitChans       []chan bool
+	jobs     crud.Crud[JobId, *JobInfo]
+	Flows    crud.Crud[FlowId, *Flow]
+	jobQueue chan *Job
+	quit     chan bool
 }
 
+// todo interfaceize this
 func New() JobEngine {
-	return JobEngine{
-		jobs:            make(map[JobId]JobInfo),
-		Flows:           make(map[FlowId]Flow),
-		jobQueue:        make(chan *Job, 1024),
-		jobUpdates:      make(chan jobUpdate, 64),
-		jobInfoRequests: make(chan jobInfoRequest, 64),
+	engine := JobEngine{
+		jobs:     crud.New[JobId, *JobInfo](),
+		Flows:    crud.New[FlowId, *Flow](),
+		jobQueue: make(chan *Job, 1024),
 	}
+	go engine.worker()
+	return engine
+}
+
+func (s *JobEngine) worker() {
+	runQuit := make(chan bool)
+	go s.RunJobs(runQuit)
+
+	scheduleQuit := make(chan bool)
+	go s.ProcessSchedule(scheduleQuit)
+
+	<-s.quit
+	scheduleQuit <- true
+	runQuit <- true
+}
+
+func (s *JobEngine) Close() {
+	s.quit <- true
 }
 
 func (s *JobEngine) StartJob(flowId FlowId) (bool, JobId) {
@@ -41,43 +57,25 @@ func (s *JobEngine) StartJob(flowId FlowId) (bool, JobId) {
 
 	log.Print("Starting job " + job.Id)
 
-	flow, ok := s.Flows[flowId]
-	if !ok {
+	flow := s.Flows.Read(flowId)
+	if flow == nil {
 		return false, ""
 	}
 
 	job.Steps = flow.Steps
-	s.jobUpdates <- jobInfoInit{id: jobId, flowId: flowId}
+	s.jobs.Create(jobId, &JobInfo{
+		FlowId: flowId,
+		Steps:  make([]StepInfo, len(flow.Steps)),
+	})
 	s.jobQueue <- job
 	return true, jobId
 }
 
 func (s *JobEngine) GetJob(id JobId) *JobInfo {
-	receiver := make(chan *JobInfo)
-	s.jobInfoRequests <- jobInfoRequest{
-		id:       id,
-		receiver: receiver,
-	}
-	return <-receiver
+	return s.jobs.Read(id)
 }
 
-func (s *JobEngine) StartWorkers() {
-	s.quitChans = []chan bool{make(chan bool), make(chan bool)}
-
-	go s.ProcessJobExecWorker()
-	go s.ProcessJobInfoWorker(s.quitChans[0])
-	go s.ProcessScheduleWorker(s.quitChans[1])
-}
-
-func (s *JobEngine) StopWorkers() {
-	for _, ch := range s.quitChans {
-		ch <- true
-	}
-
-	close(s.jobQueue)
-}
-
-func (s *JobEngine) ProcessScheduleWorker(quit chan bool) {
+func (s *JobEngine) ProcessSchedule(quit chan bool) {
 	lastMinute := time.Now().Minute() - 1
 
 	for {
@@ -89,7 +87,8 @@ func (s *JobEngine) ProcessScheduleWorker(quit chan bool) {
 
 			if now.Minute() != lastMinute {
 				lastMinute = now.Minute()
-				for id, flow := range s.Flows {
+				flows := s.Flows.Snapshot()
+				for id, flow := range flows {
 					log.Printf("Checking scheduling eligibility for %s", id)
 					if flow.Schedule != nil && scheduleMatches(now, flow.Schedule) {
 						log.Printf("Matches!")
@@ -109,57 +108,18 @@ func scheduleMatches(time time.Time, schedule *FlowSchedule) bool {
 		(schedule.Minutes == nil || slices.Contains(schedule.Minutes, time.Minute()))
 }
 
-func (s *JobEngine) ProcessJobInfoWorker(quit chan bool) {
+func (s *JobEngine) RunJobs(quit chan bool) {
 	for {
 		select {
-		case request := <-s.jobInfoRequests:
-			info, ok := s.jobs[request.id]
-			if ok {
-				request.receiver <- &info
-			} else {
-				request.receiver <- nil
-			}
-		case update := <-s.jobUpdates:
-			info, ok := s.jobs[update.JobId()]
-			if !ok {
-				info = JobInfo{Steps: make([]StepInfo, 0)}
-			}
-
-			if metaUpdate, ok := update.(jobMetaUpdate); ok {
-				flowId := metaUpdate.FlowId()
-
-				info = JobInfo{
-					FlowId: metaUpdate.FlowId(),
-					Steps:  make([]StepInfo, len(s.Flows[flowId].Steps)),
-				}
-			}
-
-			if stateUpdate, ok := update.(jobStateUpdate); ok {
-				info.State = stateUpdate.JobState()
-			}
-
-			if stepUpdate, ok := update.(jobStepUpdate); ok {
-				i := stepUpdate.StepIndex()
-				if i >= len(info.Steps) {
-					info.Steps = append(info.Steps, StepInfo{})
-				}
-
-				info.CurrentStep = i
-				info.Steps[i] = StepInfo{
-					Input:  stepUpdate.StepInput(),
-					Output: stepUpdate.StepOutput(),
-				}
-			}
-
-			s.jobs[update.JobId()] = info
 		case <-quit:
 			return
+		case job := <-s.jobQueue:
+			runJob(job, func(updateFunc func(*JobInfo)) {
+				s.jobs.Update(job.Id, func(info *JobInfo) *JobInfo {
+					updateFunc(info)
+					return info
+				})
+			})
 		}
-	}
-}
-
-func (s *JobEngine) ProcessJobExecWorker() {
-	for job := range s.jobQueue {
-		runJob(job, s.jobUpdates)
 	}
 }
