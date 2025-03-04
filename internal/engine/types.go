@@ -22,6 +22,21 @@ const (
 	JobFailed
 )
 
+func (s JobState) String() string {
+	switch s {
+	case JobPending:
+		return "pending"
+	case JobRunning:
+		return "running"
+	case JobSucceeded:
+		return "succeeded"
+	case JobFailed:
+		return "failed"
+	default:
+		return "unknown"
+	}
+}
+
 type Job struct {
 	Id    JobId
 	Steps []Step

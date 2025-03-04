@@ -15,19 +15,6 @@ type StepResult struct {
 }
 
 func FromJobInfo(id engine.JobId, info *engine.JobInfo) Job {
-	state := "unknown"
-
-	switch info.State {
-	case engine.JobPending:
-		state = "pending"
-	case engine.JobRunning:
-		state = "running"
-	case engine.JobSucceeded:
-		state = "succeeded"
-	case engine.JobFailed:
-		state = "failed"
-	}
-
 	output := make([]StepResult, len(info.Steps))
 	for i, step := range info.Steps {
 		// todo sanitize
@@ -40,7 +27,7 @@ func FromJobInfo(id engine.JobId, info *engine.JobInfo) Job {
 	return Job{
 		JobId:  string(id),
 		FlowId: string(info.FlowId),
-		State:  state,
+		State:  info.State.String(),
 		Output: output,
 	}
 }
