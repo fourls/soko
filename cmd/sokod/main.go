@@ -1,13 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/fourls/soko/internal/api"
 	"github.com/fourls/soko/internal/engine"
 	"github.com/fourls/soko/internal/sokofile"
+	"github.com/fourls/soko/internal/web"
 	"github.com/gorilla/mux"
 )
 
@@ -66,10 +66,8 @@ func main() {
 
 	apiRouter := router.NewRoute().PathPrefix("/api/").Subrouter()
 	api.ConfigureRouter(apiRouter, &jobEngine)
-
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "Hello world!")
-	})
+	webRouter := router.NewRoute().Subrouter()
+	web.ConfigureRouter(webRouter, &jobEngine)
 
 	log.Print("Serving...")
 	http.ListenAndServe(":8000", router)

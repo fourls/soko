@@ -1,0 +1,30 @@
+{{define "title"}}dashboard{{end}}
+{{define "content"}}
+<h1>Dashboard</h1>
+
+<div class="container" id="projects">
+    <div class="flows">
+        <h2>Flows</h2>
+        {{range .Flows}}
+        <div class="flow">
+            <h3 class="flow-id"><a href="/flows/{{.Id}}">{{.Id}}</a></h3>
+            <p class="flow-schedule">Runs {{.Schedule}}</p>
+        </div>
+        {{else}}
+        <p>No flows here :(</p>
+        {{end}}
+    </div>
+</div>
+
+<div class="container" id="jobs">
+    <h2>Jobs</h2>
+    {{range .Jobs}}
+    <div class="job">
+        <h3 class="job-id"><a href="/flows/{{.FlowId}}">{{.FlowId}}</a>:{{.Id}}</h3>
+        <p class="job-state">State: {{.State}}</p>
+    </div>
+    {{else}}
+    <p>No jobs here :(</p>
+    {{end}}
+</div>
+{{end}}

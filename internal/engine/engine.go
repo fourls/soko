@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"fmt"
 	"log"
 	"slices"
 	"time"
@@ -10,13 +9,8 @@ import (
 	"github.com/google/uuid"
 )
 
-type jobInfoRequest struct {
-	id       JobId
-	receiver chan *JobInfo
-}
-
 type JobEngine struct {
-	jobs     crud.Crud[JobId, JobInfo]
+	Jobs     crud.Crud[JobId, JobInfo]
 	Flows    crud.Crud[FlowId, Flow]
 	jobQueue chan *Job
 	quit     chan bool
@@ -25,7 +19,7 @@ type JobEngine struct {
 // todo interfaceize this
 func New() JobEngine {
 	engine := JobEngine{
-		jobs:     crud.New[JobId, JobInfo](),
+		Jobs:     crud.New[JobId, JobInfo](),
 		Flows:    crud.New[FlowId, Flow](),
 		jobQueue: make(chan *Job, 1024),
 	}
@@ -50,7 +44,7 @@ func (s *JobEngine) Close() {
 }
 
 func (s *JobEngine) StartJob(flowId FlowId) (bool, JobId) {
-	jobId := JobId(fmt.Sprintf("%s:%s", flowId, uuid.New().String()))
+	jobId := JobId(uuid.New().String())
 
 	job := new(Job)
 	job.Id = jobId
@@ -63,7 +57,7 @@ func (s *JobEngine) StartJob(flowId FlowId) (bool, JobId) {
 	}
 
 	job.Steps = flow.Steps
-	s.jobs.Create(jobId, JobInfo{
+	s.Jobs.Create(jobId, JobInfo{
 		FlowId: flowId,
 		Steps:  make([]StepInfo, len(flow.Steps)),
 	})
@@ -72,7 +66,7 @@ func (s *JobEngine) StartJob(flowId FlowId) (bool, JobId) {
 }
 
 func (s *JobEngine) GetJob(id JobId) (JobInfo, bool) {
-	return s.jobs.Read(id)
+	return s.Jobs.Read(id)
 }
 
 func (s *JobEngine) ProcessSchedule(quit chan bool) {
@@ -115,7 +109,7 @@ func (s *JobEngine) RunJobs(quit chan bool) {
 			return
 		case job := <-s.jobQueue:
 			runJob(job, func(updateFunc func(*JobInfo)) {
-				s.jobs.Update(job.Id, func(info JobInfo) JobInfo {
+				s.Jobs.Update(job.Id, func(info JobInfo) JobInfo {
 					updateFunc(&info)
 					return info
 				})
