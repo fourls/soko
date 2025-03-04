@@ -6,9 +6,14 @@ type createRequest[K any, V any] struct {
 	ack   chan bool
 }
 
+type readResult[V any] struct {
+	value V
+	ok    bool
+}
+
 type readRequest[K any, V any] struct {
 	key      K
-	receiver chan V
+	receiver chan readResult[V]
 }
 
 type updateRequest[K any, V any] struct {
@@ -62,8 +67,9 @@ func (c *Crud[K, V]) worker() {
 			}
 			create.ack <- !ok
 		case read := <-c.reads:
-			val := c.values[read.key]
-			read.receiver <- val
+			var result readResult[V]
+			result.value, result.ok = c.values[read.key]
+			read.receiver <- result
 		case update := <-c.updates:
 			val, ok := c.values[update.key]
 			if ok {
@@ -98,13 +104,14 @@ func (c *Crud[K, V]) Create(key K, value V) bool {
 	return <-ack
 }
 
-func (c *Crud[K, V]) Read(key K) V {
-	receiver := make(chan V)
+func (c *Crud[K, V]) Read(key K) (V, bool) {
+	receiver := make(chan readResult[V])
 	c.reads <- readRequest[K, V]{
 		key:      key,
 		receiver: receiver,
 	}
-	return <-receiver
+	val := <-receiver
+	return val.value, val.ok
 }
 
 func (c *Crud[K, V]) Update(key K, update func(V) V) bool {

@@ -45,14 +45,13 @@ func ConfigureRouter(router *mux.Router, jobEngine *engine.JobEngine) {
 		vars := mux.Vars(r)
 		id := engine.JobId(vars["id"])
 
-		info := jobEngine.GetJob(id)
-
-		if info == nil {
+		info, ok := jobEngine.GetJob(id)
+		if !ok {
 			http.Error(w, "Job not found", 404)
 			return
 		}
 
-		json.NewEncoder(w).Encode(dto.FromJobInfo(id, info))
+		json.NewEncoder(w).Encode(dto.FromJobInfo(id, &info))
 	}).Methods("GET")
 
 	log.Print("Configured API routes")

@@ -10,9 +10,9 @@ func TestCrudReadAbsent(t *testing.T) {
 	crud := crud.New[int, string]()
 	defer crud.Close()
 
-	value := crud.Read(1)
-	if value != "" {
-		t.Fatalf("got: %v when querying key, expected: %v", value, "")
+	value, ok := crud.Read(1)
+	if ok || value != "" {
+		t.Fatalf("got: %v, %v when querying key, expected: %v, %v", value, ok, "", false)
 	}
 }
 
@@ -37,9 +37,9 @@ func TestCrudCreate(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		actual := crud.Read(c.key)
-		if actual != c.expected {
-			t.Fatalf("got: %v for key %d, expected: %v", actual, c.key, c.expected)
+		actual, ok := crud.Read(c.key)
+		if !ok || actual != c.expected {
+			t.Fatalf("got: %v, %v for key %d, expected: %v, true", actual, ok, c.key, c.expected)
 		}
 	}
 }
@@ -55,9 +55,9 @@ func TestCrudCreateExisting(t *testing.T) {
 		t.Fatalf("got: true when calling second Create, expected: false")
 	}
 
-	value := crud.Read(1)
-	if value != "foo" {
-		t.Fatalf("got: %v when querying key, expected: %v", value, "foo")
+	value, ok := crud.Read(1)
+	if !ok || value != "foo" {
+		t.Fatalf("got: %v, %v when querying key, expected: %v, true", value, ok, "foo")
 	}
 }
 
@@ -79,9 +79,9 @@ func TestCrudUpdate(t *testing.T) {
 		t.Fatalf("got: false when calling Update, expected: true")
 	}
 
-	value := crud.Read(1)
-	if value != "bar" {
-		t.Fatalf("got: %v when querying key, expected: %v", value, "bar")
+	value, ok := crud.Read(1)
+	if !ok || value != "bar" {
+		t.Fatalf("got: %v, %v when querying key, expected: %v, true", value, ok, "bar")
 	}
 }
 
@@ -93,9 +93,9 @@ func TestCrudUpdateAbsent(t *testing.T) {
 		t.Fatalf("got: true when calling Update, expected: false")
 	}
 
-	value := crud.Read(1)
-	if value != "" {
-		t.Fatalf("got: %v when querying key, expected: %v", value, "")
+	value, ok := crud.Read(1)
+	if ok || value != "" {
+		t.Fatalf("got: %v, %v when querying key, expected: %v, false", value, ok, "")
 	}
 }
 
@@ -111,9 +111,9 @@ func TestCrudDelete(t *testing.T) {
 		t.Fatalf("got: false when calling Delete, expected: true")
 	}
 
-	value := crud.Read(1)
-	if value != "" {
-		t.Fatalf("got: %v when querying key, expected: %v", value, "")
+	value, ok := crud.Read(1)
+	if ok || value != "" {
+		t.Fatalf("got: %v, %v when querying key, expected: %v, false", value, ok, "")
 	}
 }
 

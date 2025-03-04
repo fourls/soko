@@ -16,8 +16,8 @@ type jobInfoRequest struct {
 }
 
 type JobEngine struct {
-	jobs     crud.Crud[JobId, *JobInfo]
-	Flows    crud.Crud[FlowId, *Flow]
+	jobs     crud.Crud[JobId, JobInfo]
+	Flows    crud.Crud[FlowId, Flow]
 	jobQueue chan *Job
 	quit     chan bool
 }
@@ -25,8 +25,8 @@ type JobEngine struct {
 // todo interfaceize this
 func New() JobEngine {
 	engine := JobEngine{
-		jobs:     crud.New[JobId, *JobInfo](),
-		Flows:    crud.New[FlowId, *Flow](),
+		jobs:     crud.New[JobId, JobInfo](),
+		Flows:    crud.New[FlowId, Flow](),
 		jobQueue: make(chan *Job, 1024),
 	}
 	go engine.worker()
@@ -57,13 +57,13 @@ func (s *JobEngine) StartJob(flowId FlowId) (bool, JobId) {
 
 	log.Print("Starting job " + job.Id)
 
-	flow := s.Flows.Read(flowId)
-	if flow == nil {
+	flow, ok := s.Flows.Read(flowId)
+	if !ok {
 		return false, ""
 	}
 
 	job.Steps = flow.Steps
-	s.jobs.Create(jobId, &JobInfo{
+	s.jobs.Create(jobId, JobInfo{
 		FlowId: flowId,
 		Steps:  make([]StepInfo, len(flow.Steps)),
 	})
@@ -71,7 +71,7 @@ func (s *JobEngine) StartJob(flowId FlowId) (bool, JobId) {
 	return true, jobId
 }
 
-func (s *JobEngine) GetJob(id JobId) *JobInfo {
+func (s *JobEngine) GetJob(id JobId) (JobInfo, bool) {
 	return s.jobs.Read(id)
 }
 
@@ -115,8 +115,8 @@ func (s *JobEngine) RunJobs(quit chan bool) {
 			return
 		case job := <-s.jobQueue:
 			runJob(job, func(updateFunc func(*JobInfo)) {
-				s.jobs.Update(job.Id, func(info *JobInfo) *JobInfo {
-					updateFunc(info)
+				s.jobs.Update(job.Id, func(info JobInfo) JobInfo {
+					updateFunc(&info)
 					return info
 				})
 			})

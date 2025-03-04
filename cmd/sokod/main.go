@@ -57,7 +57,7 @@ func main() {
 	}
 
 	for id, flow := range sokofileToFlows(project) {
-		jobEngine.Flows.Create(id, &flow)
+		jobEngine.Flows.Create(id, flow)
 	}
 
 	log.Print("Configured job engine")
